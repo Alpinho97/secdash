@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}ssh{% endblock %}
+{% block body %}
+<h1>SSH configuration &amp; keys</h1>
+
+{% if data.findings %}
+<div style="background:rgba(248,81,73,.1);border:1px solid var(--bad);padding:10px;border-radius:6px;margin-bottom:14px">
+  <strong class="bad">Loose settings:</strong> {{ data.findings | join(" · ") }}
+</div>
+{% endif %}
+
+<h2>Effective sshd config <span class="muted">(from <code>sshd -T</code>)</span></h2>
+<table>
+  <thead><tr><th>key</th><th>value</th></tr></thead>
+  <tbody>
+  {% for k, v in data.config.items() %}
+    <tr><td><code>{{ k }}</code></td><td><code>{{ v }}</code></td></tr>
+  {% else %}
+    <tr><td colspan="2" class="muted">requires root to read</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Authorized keys per user</h2>
+<div class="row">
+  <div class="stat"><span class="num">{{ data.total_keys }}</span> keys total</div>
+  <div class="stat"><span class="num bad">{{ data.weak_keys }}</span> weak</div>
+</div>
+
+{% for u in data.users %}
+<section>
+  <h3>
+    <code>{{ u.user }}</code>
+    <span class="muted">uid {{ u.uid }} · {{ u.home }}/.ssh/authorized_keys</span>
+    {% if u.key_count == 0 %}<span class="muted">no keys</span>{% endif %}
+    {% if u.weak_count %}<span class="bad">{{ u.weak_count }} weak</span>{% endif %}
+    {% if u.no_comment_count %}<span class="warn">{{ u.no_comment_count }} without comment</span>{% endif %}
+  </h3>
+  {% if u['keys'] %}
+  <table>
+    <thead><tr><th>algo</th><th class="num">bits</th><th>fingerprint</th><th>comment</th><th>options</th></tr></thead>
+    <tbody>
+    {% for k in u['keys'] %}
+      <tr class="{% if k.weak %}row-bad{% endif %}">
+        <td><code>{{ k.algo }}</code></td>
+        <td class="num">{{ k.bits or "?" }}</td>
+        <td><code class="muted">{{ k.fingerprint }}</code></td>
+        <td>{% if k.comment %}<code>{{ k.comment }}</code>{% else %}<span class="warn">(no comment)</span>{% endif %}</td>
+        <td class="muted">{{ k.options }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

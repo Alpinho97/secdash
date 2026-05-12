@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}history{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="120">{% endblock %}
+{% block body %}
+<h1>Shell history by user</h1>
+<p class="muted">last {{ 200 }} commands per user, per shell. Flagged commands match high-signal patterns (sudo, pipe-to-shell, history wipe, etc.).</p>
+
+{% for u in data.users %}
+<section>
+  <h2>
+    <code>{{ u.user }}</code>
+    <span class="muted">uid {{ u.uid }} · {{ u.shell }} · bash:{{ u.bash_count }} zsh:{{ u.zsh_count }}</span>
+    {% if u.flagged_count %}<span class="bad">{{ u.flagged_count }} flagged</span>{% endif %}
+  </h2>
+
+  {% if u.flagged %}
+    <h3>Flagged</h3>
+    <table>
+      <thead><tr><th>ts</th><th>tags</th><th>command</th></tr></thead>
+      <tbody>
+      {% for e in u.flagged %}
+        <tr class="row-bad">
+          <td class="muted">{{ e.ts }}</td>
+          <td>{% for t in e.tags %}<span class="tag">{{ t }}</span> {% endfor %}</td>
+          <td><code>{{ e.cmd }}</code></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <details>
+    <summary>all {{ u.entries|length }} commands</summary>
+    <table>
+      <thead><tr><th>ts</th><th>command</th></tr></thead>
+      <tbody>
+      {% for e in u.entries %}
+        <tr class="{% if e.tags %}row-warn{% endif %}">
+          <td class="muted">{{ e.ts }}</td>
+          <td><code>{{ e.cmd }}</code>
+            {% for t in e.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+</section>
+{% else %}
+<p class="muted">no users found</p>
+{% endfor %}
+{% endblock %}

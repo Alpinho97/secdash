@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}host{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="60">{% endblock %}
+{% block body %}
+<h1>Host health</h1>
+
+<section>
+  <h2>Failed systemd units ({{ data.failed_count }})</h2>
+  {% if data.failed_services %}
+    <table>
+      <thead><tr><th>unit</th><th>load</th><th>active</th><th>sub</th><th>description</th></tr></thead>
+      <tbody>
+      {% for f in data.failed_services %}
+        <tr class="row-bad">
+          <td><code>{{ f.unit }}</code></td>
+          <td>{{ f.load }}</td>
+          <td>{{ f.active }}</td>
+          <td>{{ f.sub }}</td>
+          <td class="muted">{{ f.desc }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="ok">no failed units</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Kernel</h2>
+  <table>
+    <tbody>
+      <tr><td>running</td><td><code>{{ data.kernel.running }}</code></td></tr>
+      <tr><td>latest installed image</td>
+          <td>
+            <code>{{ data.kernel.latest_installed or "?" }}</code>
+            {% if data.kernel.outdated %}<span class="warn">outdated — kernel update available</span>{% endif %}
+          </td></tr>
+      <tr><td>reboot required</td>
+          <td>{% if data.kernel.needs_reboot %}<span class="bad">YES</span>{% else %}<span class="ok">no</span>{% endif %}</td></tr>
+      {% if data.kernel.reboot_pkgs %}
+      <tr><td>packages needing reboot</td><td><code>{{ data.kernel.reboot_pkgs | join(", ") }}</code></td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Time sync</h2>
+  {% if data.time.available %}
+    <table>
+      <tbody>
+        <tr><td>NTP enabled</td><td>{{ data.time.ntp }}</td></tr>
+        <tr><td>NTP synchronized</td><td>{% if data.time.ntp_synchronized %}<span class="ok">yes</span>{% else %}<span class="bad">no</span>{% endif %}</td></tr>
+        <tr><td>timezone</td><td><code>{{ data.time.timezone }}</code></td></tr>
+        <tr><td>local time</td><td class="muted">{{ data.time.local_time }}</td></tr>
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+
+<section>
+  <h2>AppArmor</h2>
+  {% if data.apparmor.available %}
+    {% if data.apparmor.enforce is defined %}
+      <div class="row">
+        <div class="stat"><span class="num ok">{{ data.apparmor.enforce }}</span> enforce</div>
+        <div class="stat"><span class="num warn">{{ data.apparmor.complain }}</span> complain</div>
+        <div class="stat"><span class="num">{{ data.apparmor.kill }}</span> kill</div>
+        <div class="stat"><span class="num">{{ data.apparmor.unconfined }}</span> unconfined</div>
+      </div>
+    {% else %}
+      <pre>{{ data.apparmor.raw }}</pre>
+    {% endif %}
+  {% else %}
+    <p class="muted">aa-status not available (requires root)</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>journald</h2>
+  <p>Disk usage: <code>{{ data.journal.size_text }}</code>
+     · write rate: <code>{{ (data.journal.bytes_per_sec / 1024) | round(1) }} KiB/s</code></p>
+</section>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}auth{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="60">{% endblock %}
+{% block body %}
+<h1>SSH auth — last 24h <span class="muted">(source: {{ data.source }})</span></h1>
+<div class="row">
+  <div class="stat"><span class="num bad">{{ data.failed_count }}</span> failed</div>
+  <div class="stat"><span class="num ok">{{ data.accepted_count }}</span> accepted</div>
+  <div class="stat"><span class="num">{{ data.total_events }}</span> total events</div>
+</div>
+
+<div class="two-col">
+  <section>
+    <h2>Top source IPs (failed)</h2>
+    <table>
+      <thead><tr><th>IP</th><th class="num">attempts</th></tr></thead>
+      <tbody>
+      {% for ip, n in data.top_ips %}
+        <tr><td><code>{{ ip }}</code></td><td class="num">{{ n }}</td></tr>
+      {% else %}
+        <tr><td colspan="2" class="muted">no failed attempts</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Top targeted users</h2>
+    <table>
+      <thead><tr><th>user</th><th class="num">attempts</th></tr></thead>
+      <tbody>
+      {% for user, n in data.top_users %}
+        <tr><td><code>{{ user }}</code></td><td class="num">{{ n }}</td></tr>
+      {% else %}
+        <tr><td colspan="2" class="muted">—</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<h2>Recent failed</h2>
+<table>
+  <thead><tr><th>when</th><th>kind</th><th>user</th><th>from</th><th>method</th></tr></thead>
+  <tbody>
+  {% for e in data.recent_failed %}
+    <tr>
+      <td class="muted">{{ e.ts }}</td>
+      <td class="bad">{{ e.kind }}</td>
+      <td><code>{{ e.user }}</code></td>
+      <td><code>{{ e.ip }}</code></td>
+      <td>{{ e.method }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">none</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Recent accepted</h2>
+<table>
+  <thead><tr><th>when</th><th>user</th><th>from</th><th>method</th></tr></thead>
+  <tbody>
+  {% for e in data.recent_accepted %}
+    <tr>
+      <td class="muted">{{ e.ts }}</td>
+      <td><code>{{ e.user }}</code></td>
+      <td><code>{{ e.ip }}</code></td>
+      <td>{{ e.method }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4" class="muted">none</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

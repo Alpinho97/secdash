@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}persistence{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="300">{% endblock %}
+{% block body %}
+<h1>Persistence mechanisms</h1>
+<p class="muted">Cron, systemd-timers and SUID/SGID binaries — classic attacker hiding-spots.</p>
+
+<section>
+  <h2>SUID/SGID inventory ({{ data.suid_total }})</h2>
+  {% if data.suid_unexpected %}
+    <p class="bad">{{ data.suid_unexpected }} unexpected (not on the Ubuntu baseline). Investigate.</p>
+  {% endif %}
+  <table>
+    <thead><tr><th>path</th><th>mode</th><th class="num">uid</th><th>type</th><th>verdict</th></tr></thead>
+    <tbody>
+    {% for s in data.suid %}
+      <tr class="{% if not s.expected %}row-bad{% endif %}">
+        <td><code>{{ s.path }}</code></td>
+        <td><code>{{ s.mode }}</code></td>
+        <td class="num">{{ s.uid }}</td>
+        <td>{% if s.suid %}<span class="tag">SUID</span>{% endif %}{% if s.sgid %}<span class="tag">SGID</span>{% endif %}</td>
+        <td>{% if s.expected %}<span class="ok">baseline</span>{% else %}<span class="bad">unexpected</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>systemd timers ({{ data.timers | length }})</h2>
+  <table>
+    <thead><tr><th>unit</th><th>activates</th><th>next</th><th>left</th></tr></thead>
+    <tbody>
+    {% for t in data.timers %}
+      <tr>
+        <td><code>{{ t.unit }}</code></td>
+        <td><code>{{ t.activates }}</code></td>
+        <td class="muted">{{ t.next }}</td>
+        <td>{{ t.left }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>System cron ({{ data.system_cron | length }})</h2>
+  <table>
+    <thead><tr><th>file</th><th>line</th></tr></thead>
+    <tbody>
+    {% for c in data.system_cron %}
+      <tr><td class="muted"><code>{{ c.file }}</code></td><td><code>{{ c.line }}</code></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Per-user cron ({{ data.user_cron | length }})</h2>
+  {% if data.user_cron %}
+  <table>
+    <thead><tr><th>user</th><th>line</th></tr></thead>
+    <tbody>
+    {% for c in data.user_cron %}
+      <tr><td><code>{{ c.user }}</code></td><td><code>{{ c.line }}</code></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">none</p>{% endif %}
+</section>
+{% endblock %}

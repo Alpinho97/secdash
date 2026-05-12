@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}system{% endblock %}
+{% block body %}
+<h1>System resources <span class="muted" id="sys-status">(live · every 2s)</span></h1>
+
+<div class="row">
+  <div class="stat" style="min-width:220px">
+    <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em">CPU</div>
+    <div><span class="num" id="cpu-pct">{{ data.cpu_percent }}</span>% of {{ data.cpu_count }} cores</div>
+    <div class="bar"><div class="bar-fill" id="cpu-bar" style="width:{{ data.cpu_percent }}%"></div></div>
+    <div class="muted" style="font-size:12px">
+      load <span id="load-1">{{ data.load['1m'] }}</span>
+      / <span id="load-5">{{ data.load['5m'] }}</span>
+      / <span id="load-15">{{ data.load['15m'] }}</span>
+    </div>
+  </div>
+
+  <div class="stat" style="min-width:260px">
+    <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em">Memory</div>
+    <div>
+      <span class="num" id="mem-used">{{ (data.memory.used / 1073741824) | round(1) }}</span>
+      / <span id="mem-total">{{ (data.memory.total / 1073741824) | round(1) }}</span> GiB
+      (<span id="mem-pct">{{ data.memory.percent }}</span>%)
+    </div>
+    <div class="bar"><div class="bar-fill" id="mem-bar" style="width:{{ data.memory.percent }}%"></div></div>
+    <div class="muted" style="font-size:12px">
+      swap <span id="swap-pct">{{ data.memory.swap_percent }}</span>%
+      of <span id="swap-total">{{ (data.memory.swap_total / 1073741824) | round(1) }}</span> GiB
+    </div>
+  </div>
+
+  <div class="stat" style="min-width:200px">
+    <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em">Uptime</div>
+    <div class="num" id="uptime">{{ data.uptime_seconds }}</div>
+  </div>
+</div>
+
+<h2>Filesystems</h2>
+<table id="disks-table">
+  <thead>
+    <tr>
+      <th>mount</th>
+      <th>device</th>
+      <th>fs</th>
+      <th class="num">used</th>
+      <th class="num">total</th>
+      <th class="num">free</th>
+      <th>%</th>
+    </tr>
+  </thead>
+  <tbody id="disks-tbody">
+  {% for d in data.disks %}
+    <tr class="{% if d.percent >= 90 %}row-bad{% elif d.percent >= 75 %}row-warn{% endif %}">
+      <td><code>{{ d.mount }}</code></td>
+      <td><code>{{ d.device }}</code></td>
+      <td>{{ d.fstype }}</td>
+      <td class="num">{{ (d.used / 1073741824) | round(1) }} GiB</td>
+      <td class="num">{{ (d.total / 1073741824) | round(1) }} GiB</td>
+      <td class="num">{{ (d.free / 1073741824) | round(1) }} GiB</td>
+      <td>
+        <div class="bar bar-inline"><div class="bar-fill" style="width:{{ d.percent }}%"></div></div>
+        <span class="num">{{ d.percent }}%</span>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<script>
+function fmtUptime(s) {
+  s = Math.max(0, Math.floor(s));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return d + "d " + h + "h " + m + "m";
+  if (h > 0) return h + "h " + m + "m";
+  return m + "m";
+}
+function gib(b) { return (b / 1073741824).toFixed(1); }
+function rowClass(p) { return p >= 90 ? "row-bad" : (p >= 75 ? "row-warn" : ""); }
+
+function applyData(d) {
+  document.getElementById("cpu-pct").textContent = d.cpu_percent;
+  document.getElementById("cpu-bar").style.width = d.cpu_percent + "%";
+  document.getElementById("load-1").textContent = d.load["1m"];
+  document.getElementById("load-5").textContent = d.load["5m"];
+  document.getElementById("load-15").textContent = d.load["15m"];
+
+  document.getElementById("mem-used").textContent = gib(d.memory.used);
+  document.getElementById("mem-total").textContent = gib(d.memory.total);
+  document.getElementById("mem-pct").textContent = d.memory.percent;
+  document.getElementById("mem-bar").style.width = d.memory.percent + "%";
+  document.getElementById("swap-pct").textContent = d.memory.swap_percent;
+  document.getElementById("swap-total").textContent = gib(d.memory.swap_total);
+
+  document.getElementById("uptime").textContent = fmtUptime(d.uptime_seconds);
+
+  const tbody = document.getElementById("disks-tbody");
+  tbody.innerHTML = d.disks.map(dk => `
+    <tr class="${rowClass(dk.percent)}">
+      <td><code>${dk.mount}</code></td>
+      <td><code>${dk.device}</code></td>
+      <td>${dk.fstype}</td>
+      <td class="num">${gib(dk.used)} GiB</td>
+      <td class="num">${gib(dk.total)} GiB</td>
+      <td class="num">${gib(dk.free)} GiB</td>
+      <td><div class="bar bar-inline"><div class="bar-fill" style="width:${dk.percent}%"></div></div> <span class="num">${dk.percent}%</span></td>
+    </tr>`).join("");
+}
+
+// Initial render fixed up (uptime is a raw number in server-rendered HTML)
+document.getElementById("uptime").textContent = fmtUptime(parseFloat(document.getElementById("uptime").textContent));
+
+let inFlight = false;
+async function tick() {
+  if (inFlight) return;
+  inFlight = true;
+  try {
+    const r = await fetch("/api/system?sample=0.2", {cache: "no-store"});
+    if (r.ok) applyData(await r.json());
+    document.getElementById("sys-status").textContent = "(live · every 2s)";
+  } catch (e) {
+    document.getElementById("sys-status").textContent = "(connection lost)";
+  } finally {
+    inFlight = false;
+  }
+}
+setInterval(tick, 2000);
+</script>
+{% endblock %}

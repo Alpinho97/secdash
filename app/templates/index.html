@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}overview{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="30">{% endblock %}
+{% block body %}
+<h1>Overview</h1>
+
+{% set banner_msgs = [] %}
+{% if host.kernel.needs_reboot %}{% set _ = banner_msgs.append("Reboot required after kernel/security updates") %}{% endif %}
+{% if host.kernel.outdated %}{% set _ = banner_msgs.append("Newer kernel installed: " ~ host.kernel.latest_installed ~ " (running " ~ host.kernel.running ~ ")") %}{% endif %}
+{% if host.failed_count %}{% set _ = banner_msgs.append(host.failed_count ~ " failed systemd unit(s)") %}{% endif %}
+{% if not host.time.ntp_synchronized %}{% set _ = banner_msgs.append("Clock not synchronized") %}{% endif %}
+{% if updates.upgradable_security %}{% set _ = banner_msgs.append(updates.upgradable_security ~ " security updates pending") %}{% endif %}
+{% if updates.cve.remote_count %}{% set _ = banner_msgs.append(updates.cve.remote_count ~ " remotely-exploitable CVEs") %}{% endif %}
+
+{% if banner_msgs %}
+<div style="background:rgba(248,81,73,.1);border:1px solid var(--bad);padding:12px;border-radius:6px;margin-bottom:18px">
+  <strong class="bad">Attention:</strong>
+  <ul style="margin:6px 0 0 18px;padding:0">
+  {% for m in banner_msgs %}<li>{{ m }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="grid">
+
+  <a class="card" href="/system">
+    <h2>System</h2>
+    <div class="big {% if system.cpu_percent >= 90 or system.memory.percent >= 90 %}bad{% elif system.cpu_percent >= 70 or system.memory.percent >= 75 %}warn{% else %}ok{% endif %}">
+      CPU {{ system.cpu_percent }}% · RAM {{ system.memory.percent }}%
+    </div>
+    <div class="sub">
+      load {{ system.load['1m'] }} ·
+      {% set worst = 0 %}
+      {% for d in system.disks %}{% if d.percent > worst %}{% set worst = d.percent %}{% endif %}{% endfor %}
+      disk worst {{ worst }}%
+    </div>
+  </a>
+
+  <a class="card" href="/sessions">
+    <h2>Sessions</h2>
+    <div class="big">{{ sessions.active_count }} active</div>
+    <div class="sub">sudo: {{ sessions.sudo.ok_count }} ok · {{ sessions.sudo.fail_count }} failed</div>
+  </a>
+
+  <a class="card" href="/auth">
+    <h2>SSH auth (24h)</h2>
+    <div class="big {% if auth.failed_count > 50 %}bad{% elif auth.failed_count > 0 %}warn{% else %}ok{% endif %}">
+      {{ auth.failed_count }} failed
+    </div>
+    <div class="sub">{{ auth.accepted_count }} accepted · {{ auth.top_ips|length }} unique attacker IPs</div>
+  </a>
+
+  <a class="card" href="/ports">
+    <h2>Listening ports</h2>
+    <div class="big {% if ports.flagged_count > 0 %}warn{% else %}ok{% endif %}">
+      {{ ports.total }} sockets
+    </div>
+    <div class="sub">{{ ports.public_count }} public · {{ ports.flagged_count }} flagged</div>
+  </a>
+
+  <a class="card" href="/firewall">
+    <h2>Firewall</h2>
+    <div class="big {% if firewall.ufw.active %}ok{% else %}bad{% endif %}">
+      ufw {{ "active" if firewall.ufw.active else "inactive" }}
+    </div>
+    <div class="sub">
+      fail2ban:
+      <span class="{% if firewall.fail2ban.state == 'active' %}ok{% else %}bad{% endif %}">
+        {{ firewall.fail2ban.state }}
+      </span>
+    </div>
+  </a>
+
+  <a class="card" href="/docker">
+    <h2>Docker</h2>
+    {% if docker.available %}
+      <div class="big {% if docker.unhealthy %}bad{% elif docker.old_images %}warn{% else %}ok{% endif %}">
+        {{ docker.running }} / {{ docker.total }} running
+      </div>
+      <div class="sub">{{ docker.unhealthy }} unhealthy · {{ docker.old_images }} old images</div>
+    {% else %}
+      <div class="big muted">unavailable</div>
+    {% endif %}
+  </a>
+
+  <a class="card" href="/updates">
+    <h2>Updates &amp; CVEs</h2>
+    <div class="big {% if updates.upgradable_security > 0 or updates.cve.remote_count > 0 %}bad{% elif updates.upgradable_total > 0 %}warn{% else %}ok{% endif %}">
+      {{ updates.upgradable_total }} pkg upgrades
+    </div>
+    <div class="sub">
+      {{ updates.upgradable_security }} security · {{ updates.cve.total }} CVEs ({{ updates.cve.remote_count }} remote)
+    </div>
+  </a>
+
+  <a class="card" href="/host">
+    <h2>Host health</h2>
+    <div class="big {% if host.failed_count or host.kernel.needs_reboot %}bad{% elif host.kernel.outdated %}warn{% else %}ok{% endif %}">
+      {{ host.failed_count }} failed units
+    </div>
+    <div class="sub">
+      kernel {{ host.kernel.running }}{% if host.kernel.needs_reboot %} · <span class="bad">reboot needed</span>{% endif %}
+    </div>
+  </a>
+
+  <a class="card" href="/history">
+    <h2>Shell history</h2>
+    {% set flagged = 0 %}
+    {% for u in history.users %}{% set flagged = flagged + u.flagged_count %}{% endfor %}
+    <div class="big {% if flagged > 0 %}warn{% else %}ok{% endif %}">
+      {{ history.total_users }} users
+    </div>
+    <div class="sub">{{ flagged }} flagged commands</div>
+  </a>
+
+</div>
+{% endblock %}

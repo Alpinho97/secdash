@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}updates{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="300">{% endblock %}
+{% block body %}
+<h1>Updates &amp; CVEs
+  {% if data.cached %}<span class="muted">(cached {{ data.age_seconds }}s)</span>{% endif %}
+</h1>
+
+<div class="row">
+  <div class="stat"><span class="num">{{ data.upgradable_total }}</span> upgradable</div>
+  <div class="stat"><span class="num bad">{{ data.upgradable_security }}</span> security</div>
+  <div class="stat"><span class="num">{{ data.cve.total }}</span> CVEs</div>
+  <div class="stat"><span class="num bad">{{ data.cve.remote_count }}</span> remote</div>
+</div>
+
+<section>
+  <h2>Pending package upgrades</h2>
+  <table>
+    <thead><tr><th>package</th><th>new version</th><th>pocket</th><th>arch</th></tr></thead>
+    <tbody>
+    {% for u in data.upgradable %}
+      <tr class="{% if u.is_security %}row-bad{% endif %}">
+        <td><code>{{ u.pkg }}</code></td>
+        <td><code>{{ u.new_version }}</code></td>
+        <td>{{ u.pocket }}</td>
+        <td>{{ u.arch }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">system is up to date</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>CVEs per package
+    {% if not data.cve.available %}<span class="muted">(debsecan unavailable)</span>{% endif %}
+  </h2>
+  {% if data.cve.available %}
+    {% for pkg, cves in data.cve.by_pkg.items() %}
+      <details>
+        <summary><code>{{ pkg }}</code> — {{ cves|length }} CVE(s){% set rcount = 0 %}{% for c in cves if c.remote %}{% set rcount = rcount + 1 %}{% endfor %}{% if rcount %} <span class="bad">({{ rcount }} remote)</span>{% endif %}</summary>
+        <ul>
+        {% for c in cves %}
+          <li>
+            <a href="https://security-tracker.debian.org/tracker/{{ c.cve }}" target="_blank" rel="noopener"><code>{{ c.cve }}</code></a>
+            {% if c.urgency %}<span class="tag">{{ c.urgency }}</span>{% endif %}
+            {% if c.remote %}<span class="bad">remote</span>{% endif %}
+            {% if c.flags %}<span class="muted">{{ c.flags }}</span>{% endif %}
+          </li>
+        {% endfor %}
+        </ul>
+      </details>
+    {% endfor %}
+  {% endif %}
+</section>
+
+<section>
+  <h2>unattended-upgrades log tail</h2>
+  {% if data.unattended_tail %}
+    <pre>{{ data.unattended_tail | join("\n") }}</pre>
+  {% else %}
+    <p class="muted">no log entries</p>
+  {% endif %}
+</section>
+{% endblock %}

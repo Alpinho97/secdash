@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}docker{% endblock %}
+{% block body %}
+<h1>Docker</h1>
+{% if not data.available %}
+<p class="muted">docker is not installed or the user can't query it</p>
+{% else %}
+
+<div class="row" style="align-items:center">
+  <div class="stat"><span class="num">{{ data.running }}</span> / {{ data.total }} running</div>
+  <div class="stat"><span class="num bad">{{ data.unhealthy }}</span> unhealthy</div>
+  <div class="stat"><span class="num warn">{{ data.old_images }}</span> images ≥ 90 days</div>
+  <div class="stat"><span class="num">{{ data.stacks | length }}</span> compose stacks</div>
+  <button class="btn btn-primary" onclick="updateAllStacks()">
+    ⟳ Update ALL stacks
+  </button>
+</div>
+
+{% for stack in data.stacks %}
+<section class="stack-section">
+  <h2>
+    <code>{{ stack.project }}</code>
+    <span class="muted">{{ stack.working_dir }}</span>
+    <span style="float:right">
+      <button class="btn btn-primary" onclick="updateStack('{{ stack.project | e }}')">
+        ⟳ pull + up -d
+      </button>
+    </span>
+  </h2>
+  <div class="row" style="margin-bottom:8px">
+    <div class="stat"><span class="num">{{ stack.running }}</span>/{{ stack.total }} running</div>
+    {% if stack.unhealthy %}<div class="stat"><span class="num bad">{{ stack.unhealthy }}</span> unhealthy</div>{% endif %}
+    <div class="stat"><span class="num {% if stack.oldest_image_days >= 180 %}bad{% elif stack.oldest_image_days >= 90 %}warn{% endif %}">{{ stack.oldest_image_days }}d</span> oldest image</div>
+  </div>
+  <table>
+    <thead><tr><th>service</th><th>name</th><th>state</th><th>health</th><th>image</th><th class="num">age</th><th>ports</th></tr></thead>
+    <tbody>
+    {% for c in stack.containers %}
+      <tr class="{% if c.state != 'running' %}row-warn{% elif c.health == 'unhealthy' %}row-bad{% elif c.image_age_days >= 180 %}row-warn{% endif %}">
+        <td><code>{{ c.compose_service }}</code></td>
+        <td><code>{{ c.name }}</code></td>
+        <td>{% if c.state == 'running' %}<span class="ok">{{ c.state }}</span>{% else %}<span class="bad">{{ c.state }}</span>{% endif %}</td>
+        <td>{% if c.health == 'healthy' %}<span class="ok">healthy</span>{% elif c.health == 'unhealthy' %}<span class="bad">unhealthy</span>{% elif c.health == 'starting' %}<span class="warn">starting</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td><code>{{ c.image[:60] }}</code></td>
+        <td class="num {% if c.image_age_days >= 180 %}bad{% elif c.image_age_days >= 90 %}warn{% endif %}">{{ c.image_age_days if c.image_age_days >= 0 else '?' }}d</td>
+        <td class="muted">{{ c.ports }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+
+{% if data.standalone %}
+<section>
+  <h2>Standalone containers <span class="muted">(not part of a compose stack)</span></h2>
+  <p class="muted">For standalone containers we can pull the image, but not auto-restart — you must restart manually or trigger restart below.</p>
+  <table>
+    <thead><tr><th>name</th><th>state</th><th>image</th><th class="num">age</th><th>actions</th></tr></thead>
+    <tbody>
+    {% for c in data.standalone %}
+      <tr>
+        <td><code>{{ c.name }}</code></td>
+        <td>{% if c.state == 'running' %}<span class="ok">{{ c.state }}</span>{% else %}<span class="bad">{{ c.state }}</span>{% endif %}</td>
+        <td><code>{{ c.image[:60] }}</code></td>
+        <td class="num">{{ c.image_age_days if c.image_age_days >= 0 else '?' }}d</td>
+        <td>
+          <button class="btn btn-small" onclick="pullImage('{{ c.image | e }}')">pull image</button>
+          <button class="btn btn-small" onclick="restartContainer('{{ c.name | e }}')">restart</button>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section>
+  <h2>Recent jobs</h2>
+  <table id="jobs-table">
+    <thead><tr><th>started</th><th>kind</th><th>target</th><th>status</th><th class="num">duration</th><th></th></tr></thead>
+    <tbody id="jobs-tbody"><tr><td colspan="6" class="muted">no jobs yet</td></tr></tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Recent jobs</h2>
+  <table id="jobs-table">
+    <thead><tr><th>started</th><th>kind</th><th>target</th><th>status</th><th class="num">duration</th><th></th></tr></thead>
+    <tbody id="jobs-tbody"><tr><td colspan="6" class="muted">no jobs yet</td></tr></tbody>
+  </table>
+</section>
+
+<!-- Job log modal -->
+<div id="job-modal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="job-title">Job</h2>
+      <span id="job-status-pill" class="tag">pending</span>
+      <button class="btn btn-small" onclick="closeModal()" style="margin-left:auto">close</button>
+    </div>
+    <pre id="job-log" class="job-log"></pre>
+    <div class="muted" id="job-footer" style="padding:8px">started: — · duration: —</div>
+  </div>
+</div>
+
+<script>
+const modal = document.getElementById("job-modal");
+let pollHandle = null;
+let currentJobId = null;
+
+function openModal(label) {
+  document.getElementById("job-title").textContent = label;
+  document.getElementById("job-log").textContent = "";
+  document.getElementById("job-status-pill").textContent = "pending";
+  document.getElementById("job-status-pill").className = "tag";
+  modal.style.display = "flex";
+}
+function closeModal() {
+  modal.style.display = "none";
+  if (pollHandle) { clearInterval(pollHandle); pollHandle = null; }
+  currentJobId = null;
+}
+
+function setStatusPill(status) {
+  const pill = document.getElementById("job-status-pill");
+  pill.textContent = status;
+  pill.className = "tag";
+  if (status === "running" || status === "pending") pill.classList.add("warn");
+  if (status === "success") pill.classList.add("ok");
+  if (status === "failed" || status === "locked") pill.classList.add("bad");
+}
+
+async function pollJob(id) {
+  try {
+    const r = await fetch("/api/jobs/" + id, {cache:"no-store"});
+    if (!r.ok) return;
+    const j = await r.json();
+    setStatusPill(j.status);
+    const log = document.getElementById("job-log");
+    log.textContent = j.lines.map(l => {
+      const prefix = l.stream === "meta" ? "» " : "";
+      return prefix + l.text;
+    }).join("\n");
+    log.scrollTop = log.scrollHeight;
+    const footer = document.getElementById("job-footer");
+    const started = j.started_at ? new Date(j.started_at * 1000).toLocaleTimeString() : "—";
+    const dur = j.duration ? j.duration.toFixed(1) + "s" : "—";
+    footer.textContent = `job ${j.id} · started ${started} · duration ${dur} · ${j.line_count} lines`;
+    if (j.status !== "running" && j.status !== "pending") {
+      if (pollHandle) { clearInterval(pollHandle); pollHandle = null; }
+      // Auto-reload page after success so container list refreshes
+      if (j.status === "success") setTimeout(() => location.reload(), 2500);
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function trigger(method, path, body, label) {
+  if (!confirm(label + "\n\nProceed?")) return;
+  openModal(label);
+  try {
+    const r = await fetch(path, {
+      method,
+      headers: {"Content-Type": "application/json"},
+      body: body ? JSON.stringify(body) : "{}",
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      document.getElementById("job-log").textContent = "Error: " + r.status + "\n" + txt;
+      setStatusPill("failed");
+      return;
+    }
+    const j = await r.json();
+    if (j.jobs) {
+      // update-all returns multiple
+      document.getElementById("job-log").textContent =
+        "Started " + j.jobs.length + " jobs:\n" +
+        j.jobs.map(x => "  " + x.project + " → " + x.job_id + " (" + x.status + ")").join("\n") +
+        "\n\nWatch them on the Jobs panel below the modal or refresh the page.";
+      setStatusPill("running");
+      return;
+    }
+    currentJobId = j.id;
+    setStatusPill(j.status);
+    pollHandle = setInterval(() => pollJob(currentJobId), 1000);
+    pollJob(currentJobId);
+  } catch (e) {
+    document.getElementById("job-log").textContent = "Network error: " + e;
+    setStatusPill("failed");
+  }
+}
+
+function updateStack(project) {
+  trigger("POST", "/api/actions/compose/update", {project: project}, "Update compose stack: " + project);
+}
+function updateAllStacks() {
+  trigger("POST", "/api/actions/compose/update-all", null, "Update ALL compose stacks");
+}
+function pullImage(image) {
+  trigger("POST", "/api/actions/image/pull", {image: image}, "Pull image: " + image);
+}
+function restartContainer(name) {
+  trigger("POST", "/api/actions/container/restart", {name: name}, "Restart container: " + name);
+}
+
+// Close modal with Escape
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+async function refreshJobs() {
+  try {
+    const r = await fetch("/api/jobs?limit=15", {cache:"no-store"});
+    if (!r.ok) return;
+    const d = await r.json();
+    const tbody = document.getElementById("jobs-tbody");
+    if (!d.jobs.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">no jobs yet</td></tr>';
+      return;
+    }
+    const pill = s => {
+      let cls = "";
+      if (s === "running" || s === "pending") cls = " warn";
+      else if (s === "success") cls = " ok";
+      else if (s === "failed" || s === "locked") cls = " bad";
+      return `<span class="tag${cls}">${s}</span>`;
+    };
+    tbody.innerHTML = d.jobs.map(j => `
+      <tr>
+        <td class="muted">${j.started_at ? new Date(j.started_at*1000).toLocaleTimeString() : "—"}</td>
+        <td><code>${j.kind}</code></td>
+        <td><code>${j.target}</code></td>
+        <td>${pill(j.status)}</td>
+        <td class="num">${j.duration ? j.duration.toFixed(1) + "s" : "—"}</td>
+        <td><button class="btn btn-small" onclick="viewJob('${j.id}','${j.label.replace(/'/g, "")}')">view log</button></td>
+      </tr>`).join("");
+  } catch (e) {}
+}
+function viewJob(id, label) {
+  openModal(label);
+  currentJobId = id;
+  pollJob(id);
+  if (pollHandle) clearInterval(pollHandle);
+  pollHandle = setInterval(() => pollJob(id), 1000);
+}
+refreshJobs();
+setInterval(refreshJobs, 3000);
+
+async function refreshJobs() {
+  try {
+    const r = await fetch("/api/jobs?limit=15", {cache:"no-store"});
+    if (!r.ok) return;
+    const d = await r.json();
+    const tbody = document.getElementById("jobs-tbody");
+    if (!d.jobs.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">no jobs yet</td></tr>';
+      return;
+    }
+    const pill = s => {
+      let cls = "";
+      if (s === "running" || s === "pending") cls = " warn";
+      else if (s === "success") cls = " ok";
+      else if (s === "failed" || s === "locked") cls = " bad";
+      return `<span class="tag${cls}">${s}</span>`;
+    };
+    tbody.innerHTML = d.jobs.map(j => `
+      <tr>
+        <td class="muted">${j.started_at ? new Date(j.started_at*1000).toLocaleTimeString() : "—"}</td>
+        <td><code>${j.kind}</code></td>
+        <td><code>${j.target}</code></td>
+        <td>${pill(j.status)}</td>
+        <td class="num">${j.duration ? j.duration.toFixed(1) + "s" : "—"}</td>
+        <td><button class="btn btn-small" onclick="viewJob('${j.id}','${j.label.replace(/'/g, "")}')">view log</button></td>
+      </tr>`).join("");
+  } catch (e) {}
+}
+function viewJob(id, label) {
+  openModal(label);
+  currentJobId = id;
+  pollJob(id);
+  if (pollHandle) clearInterval(pollHandle);
+  pollHandle = setInterval(() => pollJob(id), 1000);
+}
+refreshJobs();
+setInterval(refreshJobs, 3000);
+</script>
+{% endif %}
+{% endblock %}

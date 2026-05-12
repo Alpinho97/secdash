@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}sessions{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="30">{% endblock %}
+{% block body %}
+<h1>Sessions &amp; sudo audit</h1>
+
+<h2>Currently logged in ({{ data.active_count }})</h2>
+<table>
+  <thead><tr><th>user</th><th>tty</th><th>login</th><th>idle</th><th>from</th><th class="num">pid</th></tr></thead>
+  <tbody>
+  {% for s in data.active %}
+    <tr>
+      <td><code>{{ s.user }}</code></td>
+      <td><code>{{ s.tty }}</code></td>
+      <td class="muted">{{ s.login }}</td>
+      <td>{{ s.idle }}</td>
+      <td><code>{{ s.from }}</code></td>
+      <td class="num">{{ s.pid }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">no active sessions</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Recent successful logins</h2>
+<table>
+  <thead><tr><th>user</th><th>tty</th><th>from</th><th>raw</th></tr></thead>
+  <tbody>
+  {% for s in data.recent_logins %}
+    <tr><td><code>{{ s.user }}</code></td><td><code>{{ s.tty }}</code></td><td><code>{{ s.from }}</code></td><td class="muted">{{ s.raw }}</td></tr>
+  {% else %}
+    <tr><td colspan="4" class="muted">no entries</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Failed login attempts (btmp)</h2>
+{% if data.recent_failed_logins %}
+<pre>{{ data.recent_failed_logins | join("\n") }}</pre>
+{% else %}<p class="muted">none (requires root to read /var/log/btmp)</p>{% endif %}
+
+<h2>sudo activity (last 24h)</h2>
+<div class="row">
+  <div class="stat"><span class="num ok">{{ data.sudo.ok_count }}</span> ok</div>
+  <div class="stat"><span class="num bad">{{ data.sudo.fail_count }}</span> failed</div>
+</div>
+
+<h3>Recent commands</h3>
+<table>
+  <thead><tr><th>when</th><th>user</th><th>tty</th><th>as</th><th>command</th></tr></thead>
+  <tbody>
+  {% for e in data.sudo.recent_ok %}
+    <tr>
+      <td class="muted">{{ e.ts }}</td>
+      <td><code>{{ e.user }}</code></td>
+      <td><code>{{ e.tty }}</code></td>
+      <td><code>{{ e.as }}</code></td>
+      <td><code>{{ e.cmd }}</code></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">none</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if data.sudo.recent_fails %}
+<h3>Failed sudo authentications</h3>
+<table>
+  <thead><tr><th>when</th><th>user</th><th>raw</th></tr></thead>
+  <tbody>
+  {% for e in data.sudo.recent_fails %}
+    <tr class="row-bad"><td class="muted">{{ e.ts }}</td><td><code>{{ e.user }}</code></td><td class="muted">{{ e.line }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

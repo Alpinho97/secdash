@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}ports{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="60">{% endblock %}
+{% block body %}
+<h1>Listening sockets</h1>
+<div class="row">
+  <div class="stat"><span class="num">{{ data.total }}</span> total</div>
+  <div class="stat"><span class="num warn">{{ data.public_count }}</span> public</div>
+  <div class="stat"><span class="num bad">{{ data.flagged_count }}</span> flagged</div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>proto</th><th>address</th><th class="num">port</th><th>process</th><th class="num">pid</th><th>scope</th></tr>
+  </thead>
+  <tbody>
+  {% for r in data.rows %}
+    <tr class="{% if r.flagged %}row-bad{% elif r.is_public %}row-warn{% endif %}">
+      <td>{{ r.proto }}</td>
+      <td><code>{{ r.local_host }}</code></td>
+      <td class="num"><code>{{ r.local_port }}</code></td>
+      <td>{{ r.process or "?" }}</td>
+      <td class="num">{{ r.pid }}</td>
+      <td>
+        {% if r.is_loopback %}<span class="ok">loopback</span>
+        {% elif r.flagged %}<span class="bad">public · unexpected</span>
+        {% elif r.is_public %}<span class="warn">public</span>
+        {% else %}<span class="muted">{{ r.local_host }}</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

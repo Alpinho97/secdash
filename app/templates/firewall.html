@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}firewall{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="60">{% endblock %}
+{% block body %}
+<h1>Firewall &amp; intrusion prevention</h1>
+
+<section>
+  <h2>ufw —
+    {% if data.ufw.active %}<span class="ok">active</span>
+    {% elif data.ufw.available %}<span class="bad">inactive</span>
+    {% else %}<span class="muted">not available</span>
+    {% endif %}
+  </h2>
+  {% if data.ufw.available %}
+    <pre>{{ data.ufw.raw }}</pre>
+  {% else %}
+    <p class="muted">{{ data.ufw.error }}</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>fail2ban —
+    {% if data.fail2ban.state == 'active' %}<span class="ok">active</span>
+    {% else %}<span class="bad">{{ data.fail2ban.state }}</span>
+    {% endif %}
+  </h2>
+  {% if data.fail2ban.jails %}
+    <table>
+      <thead><tr><th>jail</th><th class="num">failed</th><th class="num">banned</th><th>currently banned</th></tr></thead>
+      <tbody>
+      {% for j in data.fail2ban.jails %}
+        <tr>
+          <td><code>{{ j.name }}</code></td>
+          <td class="num">{{ j.total_failed }}</td>
+          <td class="num">{{ j.total_banned }}</td>
+          <td>{% for b in j.banned %}<code>{{ b }}</code> {% endfor %}{% if not j.banned %}<span class="muted">none</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  {% if data.fail2ban.recent_log %}
+    <h3>last log lines</h3>
+    <pre>{{ data.fail2ban.recent_log | join("\n") }}</pre>
+  {% endif %}
+</section>
+{% endblock %}

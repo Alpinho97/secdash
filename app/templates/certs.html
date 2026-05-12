@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}certs{% endblock %}
+{% block body %}
+<h1>TLS certificates {% if data.cached %}<span class="muted">(cached {{ data.age_seconds }}s)</span>{% endif %}</h1>
+{% if not data.available %}
+<p class="muted">openssl not available</p>
+{% else %}
+<div class="row">
+  <div class="stat"><span class="num">{{ data.total }}</span> certs</div>
+  <div class="stat"><span class="num bad">{{ data.expired }}</span> expired</div>
+  <div class="stat"><span class="num warn">{{ data.soon }}</span> expiring within 30d</div>
+</div>
+
+<table>
+  <thead><tr><th class="num">days</th><th>subject</th><th>issuer</th><th>not_after</th><th>path</th></tr></thead>
+  <tbody>
+  {% for c in data.certs %}
+    <tr class="{% if c.expired %}row-bad{% elif c.soon %}row-warn{% endif %}">
+      <td class="num">{{ c.days_until_expiry }}</td>
+      <td><code>{{ c.subject }}</code>
+        {% if c.sans %}<br><span class="muted">SANs: {{ c.sans | join(", ") }}</span>{% endif %}
+      </td>
+      <td class="muted">{{ c.issuer }}</td>
+      <td class="muted">{{ c.not_after }}</td>
+      <td class="muted"><code>{{ c.path }}</code></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">no server certs found</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

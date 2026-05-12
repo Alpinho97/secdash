@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}processes{% endblock %}
+{% block body %}
+<h1>Top processes <span class="muted" id="proc-status">(live · every 3s)</span></h1>
+<p class="muted">total {{ data.total }} processes · {{ data.ncpu }} cores</p>
+
+<div class="two-col">
+
+<section>
+  <h2>Top by CPU%</h2>
+  <table>
+    <thead><tr><th class="num">cpu%</th><th class="num">rss</th><th class="num">pid</th><th>process</th></tr></thead>
+    <tbody id="cpu-tbody">
+    {% for p in data.top_cpu %}
+      <tr>
+        <td class="num">{{ p.cpu_pct }}</td>
+        <td class="num muted">{{ (p.rss / 1048576) | round(1) }} MiB</td>
+        <td class="num">{{ p.pid }}</td>
+        <td><code>{{ p.comm }}</code> <span class="muted">{{ p.cmdline[:80] }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Top by RAM</h2>
+  <table>
+    <thead><tr><th class="num">rss</th><th class="num">cpu%</th><th class="num">pid</th><th>process</th></tr></thead>
+    <tbody id="rss-tbody">
+    {% for p in data.top_rss %}
+      <tr>
+        <td class="num">{{ (p.rss / 1048576) | round(1) }} MiB</td>
+        <td class="num muted">{{ p.cpu_pct }}</td>
+        <td class="num">{{ p.pid }}</td>
+        <td><code>{{ p.comm }}</code> <span class="muted">{{ p.cmdline[:80] }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+</div>
+
+<script>
+async function tickProc() {
+  try {
+    const r = await fetch("/api/processes", {cache:"no-store"});
+    if (!r.ok) return;
+    const d = await r.json();
+    const fmt = p => `<tr>
+      <td class="num">${p.cpu_pct}</td>
+      <td class="num muted">${(p.rss/1048576).toFixed(1)} MiB</td>
+      <td class="num">${p.pid}</td>
+      <td><code>${p.comm}</code> <span class="muted">${(p.cmdline||"").substring(0,80)}</span></td></tr>`;
+    const fmt2 = p => `<tr>
+      <td class="num">${(p.rss/1048576).toFixed(1)} MiB</td>
+      <td class="num muted">${p.cpu_pct}</td>
+      <td class="num">${p.pid}</td>
+      <td><code>${p.comm}</code> <span class="muted">${(p.cmdline||"").substring(0,80)}</span></td></tr>`;
+    document.getElementById("cpu-tbody").innerHTML = d.top_cpu.map(fmt).join("");
+    document.getElementById("rss-tbody").innerHTML = d.top_rss.map(fmt2).join("");
+    document.getElementById("proc-status").textContent = "(live · every 3s)";
+  } catch (e) {
+    document.getElementById("proc-status").textContent = "(connection lost)";
+  }
+}
+setInterval(tickProc, 3000);
+</script>
+{% endblock %}

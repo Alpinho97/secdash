@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}network{% endblock %}
+{% block body %}
+<h1>Network <span class="muted" id="net-status">(live · every 3s)</span></h1>
+
+<section>
+  <h2>Interfaces</h2>
+  <label style="font-size:12px"><input type="checkbox" id="show-docker"> show docker ifaces ({{ data.nics | selectattr("is_docker") | list | length }})</label>
+  <table id="nic-table">
+    <thead><tr><th>iface</th><th class="num">rx/s</th><th class="num">tx/s</th><th class="num">rx total</th><th class="num">tx total</th><th class="num">errs</th></tr></thead>
+    <tbody id="nic-tbody">
+    {% for n in data.nics %}
+      <tr data-docker="{{ '1' if n.is_docker else '0' }}" {% if n.is_docker %}style="display:none"{% endif %}>
+        <td><code>{{ n.name }}</code></td>
+        <td class="num"><span class="rx-rate">{{ (n.rx_rate / 1024) | round(1) }}</span> KB/s</td>
+        <td class="num"><span class="tx-rate">{{ (n.tx_rate / 1024) | round(1) }}</span> KB/s</td>
+        <td class="num muted">{{ (n.rx_bytes / 1073741824) | round(2) }} GiB</td>
+        <td class="num muted">{{ (n.tx_bytes / 1073741824) | round(2) }} GiB</td>
+        <td class="num {% if n.rx_errs + n.tx_errs %}bad{% endif %}">{{ n.rx_errs + n.tx_errs }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Tailscale</h2>
+  {% if data.tailscale.available %}
+    <div class="row">
+      <div class="stat"><span class="muted">state</span> <code>{{ data.tailscale.backend_state }}</code></div>
+      <div class="stat"><span class="muted">self</span> <code>{{ data.tailscale.self_host }}</code> ({{ data.tailscale.self_ip }})</div>
+      <div class="stat"><span class="muted">magic dns</span> <code>{{ data.tailscale.magicdns_suffix }}</code></div>
+      <div class="stat"><span class="num ok">{{ data.tailscale.online_peers }}</span> / {{ data.tailscale.peers | length }} peers online</div>
+    </div>
+    <table>
+      <thead><tr><th>host</th><th>tailnet dns</th><th>ip</th><th>os</th><th>status</th><th>exit?</th></tr></thead>
+      <tbody>
+      {% for p in data.tailscale.peers %}
+        <tr class="{% if not p.online %}row-warn{% endif %}">
+          <td><code>{{ p.host }}</code></td>
+          <td class="muted">{{ p.dns }}</td>
+          <td><code>{{ p.ip }}</code></td>
+          <td>{{ p.os }}</td>
+          <td>{% if p.online %}<span class="ok">online</span>{% else %}<span class="muted">offline</span>{% endif %}</td>
+          <td>{% if p.exit_node %}<span class="warn">EXIT</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">tailscale not available</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Established connections ({{ data.connections | length }})</h2>
+  <table>
+    <thead><tr><th>process</th><th class="num">pid</th><th>local</th><th>peer</th></tr></thead>
+    <tbody>
+    {% for c in data.connections %}
+      <tr>
+        <td>{{ c.process or "?" }}</td>
+        <td class="num">{{ c.pid }}</td>
+        <td><code>{{ c.local }}</code></td>
+        <td><code>{{ c.peer }}</code></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<script>
+document.getElementById("show-docker").addEventListener("change", e => {
+  document.querySelectorAll('#nic-tbody tr[data-docker="1"]').forEach(tr => {
+    tr.style.display = e.target.checked ? "" : "none";
+  });
+});
+
+let inFlight = false;
+async function tickNet() {
+  if (inFlight) return;
+  inFlight = true;
+  try {
+    const r = await fetch("/api/network", {cache:"no-store"});
+    if (r.ok) {
+      const d = await r.json();
+      // update rx/tx for visible rows
+      d.nics.forEach(nic => {
+        const row = document.querySelector(`#nic-tbody tr td code`);
+        document.querySelectorAll("#nic-tbody tr").forEach(tr => {
+          const codeEl = tr.querySelector("td code");
+          if (codeEl && codeEl.textContent === nic.name) {
+            tr.querySelector(".rx-rate").textContent = (nic.rx_rate/1024).toFixed(1);
+            tr.querySelector(".tx-rate").textContent = (nic.tx_rate/1024).toFixed(1);
+          }
+        });
+      });
+      document.getElementById("net-status").textContent = "(live · every 3s)";
+    }
+  } catch (e) {
+    document.getElementById("net-status").textContent = "(connection lost)";
+  } finally { inFlight = false; }
+}
+setInterval(tickNet, 3000);
+</script>
+{% endblock %}
