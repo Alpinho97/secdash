@@ -104,10 +104,32 @@ log "Will install to ${DEST}, bind to ${BIND}:${PORT}, git ref '${REF}'"
 # ---- Dependencies ----
 log "Installing apt dependencies"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-PKGS=(git python3 python3-venv ca-certificates openssl iproute2)
+
+# Run apt-get update tolerantly. A single broken 3rd-party repo (expired GPG
+# key on a Caddy/Docker/NodeSource line, etc.) should not prevent installing
+# the tiny core set of packages we need — they all come from the OS distro.
+APT_UPDATE_LOG=$(mktemp)
+# `|| true` because we want to inspect the log either way (set -e is on).
+apt-get update 2>&1 | tee "${APT_UPDATE_LOG}" >/dev/null || true
+if grep -qE 'NO_PUBKEY|is not signed|GPG error|ist nicht signiert|Signaturen konnten nicht' "${APT_UPDATE_LOG}"; then
+  warn "Some apt repositories failed signature verification."
+  warn "Offending lines:"
+  grep -E '^(E:|W:)' "${APT_UPDATE_LOG}" | sed 's/^/    /' >&2
+  warn "secdash continues; fix those third-party repos separately if you need them."
+fi
+rm -f "${APT_UPDATE_LOG}"
+
+CORE_PKGS=(git python3 python3-venv ca-certificates openssl iproute2)
+PKGS=("${CORE_PKGS[@]}")
 [[ ${SKIP_DEBSECAN} -eq 0 ]] && PKGS+=(debsecan)
-apt-get install -y -qq "${PKGS[@]}"
+
+# First attempt: full set. If apt-get install itself bails out because
+# /var/lib/apt/lists/ has unsigned partial files, we retry without the soft
+# optional package(s).
+if ! apt-get install -y -qq --no-install-recommends "${PKGS[@]}"; then
+  warn "apt-get install failed; retrying with core packages only (no debsecan)"
+  apt-get install -y -qq --no-install-recommends "${CORE_PKGS[@]}"
+fi
 
 # ---- Fetch source ----
 log "Fetching source (ref=${REF})"
